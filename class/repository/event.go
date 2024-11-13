@@ -16,6 +16,8 @@ func InitEventRepo(db *sql.DB) *Event {
 }
 
 func (repo *Event) All(date string, page int, sort string) (int, int, []model.Event, error) {
+	const Limit = 6
+
 	startDate := ""
 	if date != "" {
 		startDate = fmt.Sprintf(" AND events.tour_datetime::date = '%s' ", date)
@@ -44,7 +46,7 @@ func (repo *Event) All(date string, page int, sort string) (int, int, []model.Ev
 				) o ON events.destination_id=o.destination_id
 				WHERE events.tour_datetime > NOW() ` + startDate + orderBy + ` LIMIT 6 OFFSET $1`
 
-	offset := (page - 1) * 6
+	offset := (page - 1) * Limit
 
 	rows, err := repo.Db.Query(query, offset)
 
@@ -52,14 +54,14 @@ func (repo *Event) All(date string, page int, sort string) (int, int, []model.Ev
 	for rows.Next() {
 		var event model.Event
 		if err := rows.Scan(&event.Id, &event.TourAt, &event.DestinationId, &event.Destination.Name, &event.Destination.Thumbnail, &event.Destination.Price, &event.Destination.Sold, &event.Destination.Rating); err != nil {
-			return count, int(math.Ceil(float64(count) / 6)), []model.Event{}, err
+			return count, int(math.Ceil(float64(count) / Limit)), []model.Event{}, err
 		}
 		events = append(events, event)
 	}
 
 	if err = rows.Err(); err != nil {
-		return count, int(math.Ceil(float64(count) / 6)), []model.Event{}, err
+		return count, int(math.Ceil(float64(count) / Limit)), []model.Event{}, err
 	}
-	return count, int(math.Ceil(float64(count) / 6)), events, nil
+	return count, int(math.Ceil(float64(count) / Limit)), events, nil
 
 }
