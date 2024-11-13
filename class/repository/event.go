@@ -3,6 +3,7 @@ package repository
 import (
 	"20241113/class/model"
 	"database/sql"
+	"fmt"
 	"math"
 )
 
@@ -15,14 +16,14 @@ func InitEventRepo(db *sql.DB) *Event {
 }
 
 func (repo *Event) All(date string, page int, sort string) (int, int, []model.Event, error) {
-	startDate := "1990-01-01"
+	startDate := ""
 	if date != "" {
-		startDate = date
+		startDate = fmt.Sprintf(" AND events.tour_datetime::date = '%s' ", date)
 	}
 
 	var count int
-	queryCount := `SELECT COUNT(*) FROM events WHERE tour_datetime >= $1 AND events.tour_datetime > NOW()`
-	err := repo.Db.QueryRow(queryCount, startDate).Scan(&count)
+	queryCount := `SELECT COUNT(*) FROM events WHERE events.tour_datetime > NOW() ` + startDate
+	err := repo.Db.QueryRow(queryCount).Scan(&count)
 
 	orderBy := ""
 	if sort != "" {
@@ -33,20 +34,24 @@ func (repo *Event) All(date string, page int, sort string) (int, int, []model.Ev
 		orderBy = "ORDER BY price DESC"
 	}
 
-	query := `SELECT events.id, tour_datetime, destination_id,destinations.name, destinations.thumbnail, destinations.price
+	query := `SELECT events.id, tour_datetime, events.destination_id,destinations.name, destinations.thumbnail, destinations.price, o.sold,o.average
 				FROM events
 				JOIN destinations ON events.destination_id = destinations.id
-				WHERE events.tour_datetime >= $2 AND events.tour_datetime > NOW()
-				` + orderBy + ` LIMIT 6 OFFSET $1`
+				LEFT JOIN (
+					SELECT destination_id,COUNT(*) sold,AVG(rating)::decimal(3,2) average FROM orders
+					JOIN events ON orders.event_id=events.id
+					GROUP BY destination_id
+				) o ON events.destination_id=o.destination_id
+				WHERE events.tour_datetime > NOW() ` + startDate + orderBy + ` LIMIT 6 OFFSET $1`
 
 	offset := (page - 1) * 6
 
-	rows, err := repo.Db.Query(query, offset, startDate)
+	rows, err := repo.Db.Query(query, offset)
 
 	var events []model.Event
 	for rows.Next() {
 		var event model.Event
-		if err := rows.Scan(&event.Id, &event.TourAt, &event.DestinationId, &event.Destination.Name, &event.Destination.Thumbnail, &event.Destination.Price); err != nil {
+		if err := rows.Scan(&event.Id, &event.TourAt, &event.DestinationId, &event.Destination.Name, &event.Destination.Thumbnail, &event.Destination.Price, &event.Destination.Sold, &event.Destination.Rating); err != nil {
 			return count, int(math.Ceil(float64(count) / 6)), []model.Event{}, err
 		}
 		events = append(events, event)
